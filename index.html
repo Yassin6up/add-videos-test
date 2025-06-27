@@ -478,7 +478,7 @@
                 videoForm.reset();
                 fileInfo.style.display = 'none';
             } catch (error) {
-                console.error(error);
+                console.log("error  : ",error.response.data);
                 alert('حدث خطأ أثناء تحميل الفيديو: ' + error.message);
             } finally {
                 // Reset button
