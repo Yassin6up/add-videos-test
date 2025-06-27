@@ -323,14 +323,18 @@
             position: fixed;
             top: 20px;
             right: 20px;
-            padding: 10px 15px;
-            border-radius: 50px;
+            padding: 15px;
+            border-radius: 10px;
             font-weight: 600;
             z-index: 1000;
             display: flex;
             align-items: center;
             gap: 8px;
-            box-shadow: 0 3px 10px rgba(0, 0, 0, 0.1);
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.15);
+            max-width: 400px;
+            white-space: normal;
+            word-break: break-word;
+            text-align: right;
         }
         
         .connection-status.connected {
@@ -344,6 +348,14 @@
             color: var(--danger);
             border: 1px solid var(--danger);
             animation: pulse 2s infinite;
+        }
+        
+        .connection-status.error-details {
+            background-color: rgba(220, 53, 69, 0.15);
+            color: var(--danger);
+            border: 1px solid var(--danger);
+            max-height: 200px;
+            overflow-y: auto;
         }
         
         @keyframes pulse {
@@ -368,6 +380,34 @@
             transition: width 0.4s ease;
         }
         
+        .error-details {
+            background-color: #fff8f8;
+            border: 1px solid #ffcccc;
+            border-radius: 8px;
+            padding: 15px;
+            margin-top: 15px;
+            font-family: monospace;
+            font-size: 0.85rem;
+            max-height: 200px;
+            overflow-y: auto;
+            display: none;
+        }
+        
+        .error-details pre {
+            margin: 0;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+        
+        .error-toggle {
+            color: var(--danger);
+            text-decoration: underline;
+            cursor: pointer;
+            margin-top: 10px;
+            font-size: 0.9rem;
+            display: block;
+        }
+        
         @media (max-width: 768px) {
             .categories-grid {
                 grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
@@ -380,8 +420,8 @@
             .connection-status {
                 top: 10px;
                 right: 10px;
-                font-size: 0.9rem;
-                padding: 8px 12px;
+                left: 10px;
+                max-width: none;
             }
         }
         
@@ -415,7 +455,13 @@
             <div class="card-body">
                 <!-- حاوية حالة الاتصال -->
                 <div id="connectionStatus" class="connection-status disconnected">
-                    <i class="fas fa-plug"></i> <span>جاري التحقق من اتصال الخادم...</span>
+                    <i class="fas fa-plug"></i> 
+                    <div>
+                        <span id="statusText">جاري التحقق من اتصال الخادم...</span>
+                        <a class="error-toggle" id="errorToggle" onclick="toggleErrorDetails()" style="display:none;">
+                            <i class="fas fa-chevron-down"></i> عرض تفاصيل الخطأ
+                        </a>
+                    </div>
                 </div>
                 
                 <!-- حاوية حالة التحميل -->
@@ -476,6 +522,11 @@
                         <i class="fas fa-paper-plane"></i> رفع الفيديو
                     </button>
                 </form>
+                
+                <!-- تفاصيل الخطأ -->
+                <div id="errorDetails" class="error-details">
+                    <pre id="errorPre"></pre>
+                </div>
             </div>
         </div>
         
@@ -488,8 +539,14 @@
         // فحص اتصال الخادم
         async function checkServerConnection() {
             const statusElement = document.getElementById('connectionStatus');
+            const statusText = document.getElementById('statusText');
+            const errorToggle = document.getElementById('errorToggle');
+            const errorPre = document.getElementById('errorPre');
+            
             statusElement.className = 'connection-status';
             statusElement.innerHTML = '<i class="fas fa-sync fa-spin"></i> جاري التحقق من اتصال الخادم...';
+            errorToggle.style.display = 'none';
+            document.getElementById('errorDetails').style.display = 'none';
             
             try {
                 // اختبار اتصال بسيط
@@ -504,12 +561,30 @@
                     statusElement.className = 'connection-status connected';
                     statusElement.innerHTML = '<i class="fas fa-check-circle"></i> متصل بالخادم بنجاح';
                 } else {
-                    statusElement.className = 'connection-status disconnected';
-                    statusElement.innerHTML = '<i class="fas fa-exclamation-triangle"></i> الخادم غير متوفر حالياً';
+                    const error = new Error(`الخادم غير متوفر حالياً (الحالة: ${testResponse.status})`);
+                    throw error;
                 }
             } catch (error) {
+                console.error('فشل اتصال الخادم:', error);
+                
                 statusElement.className = 'connection-status disconnected';
-                statusElement.innerHTML = '<i class="fas fa-exclamation-triangle"></i> فشل الاتصال بالخادم';
+                statusText.textContent = `فشل الاتصال بالخادم: ${error.message}`;
+                errorPre.textContent = `تفاصيل الخطأ: ${error.stack || error}`;
+                errorToggle.style.display = 'block';
+            }
+        }
+        
+        // تبديل عرض تفاصيل الخطأ
+        function toggleErrorDetails() {
+            const errorDetails = document.getElementById('errorDetails');
+            const errorToggle = document.getElementById('errorToggle');
+            
+            if (errorDetails.style.display === 'block') {
+                errorDetails.style.display = 'none';
+                errorToggle.innerHTML = '<i class="fas fa-chevron-down"></i> عرض تفاصيل الخطأ';
+            } else {
+                errorDetails.style.display = 'block';
+                errorToggle.innerHTML = '<i class="fas fa-chevron-up"></i> إخفاء تفاصيل الخطأ';
             }
         }
         
@@ -665,7 +740,11 @@
                         if (!response.ok) {
                             const errorText = await response.text();
                             console.error('Server error response:', errorText);
-                            throw new Error(`حدث خطأ في الخادم (${response.status})`);
+                            
+                            // تسجيل تفاصيل الخطأ
+                            const error = new Error(`حدث خطأ في الخادم (${response.status})`);
+                            error.details = errorText;
+                            throw error;
                         }
                         
                         const result = await response.text();
@@ -686,6 +765,10 @@
                         retryCount++;
                         console.error(`Attempt ${retryCount} failed:`, error);
                         
+                        // تسجيل تفاصيل الخطأ
+                        const errorPre = document.getElementById('errorPre');
+                        errorPre.textContent = `تفاصيل الخطأ:\n\n${error.stack || error}\n\n${error.details || ''}`;
+                        
                         if (retryCount < maxRetries) {
                             showStatus(`فشل الإرسال (المحاولة ${retryCount} من ${maxRetries}). جاري إعادة المحاولة...`, 'warning');
                             await new Promise(resolve => setTimeout(resolve, 2000)); // انتظار 2 ثانية قبل إعادة المحاولة
@@ -698,6 +781,9 @@
                 console.error('Upload error:', error);
                 showStatus(`حدث خطأ أثناء تحميل الفيديو: ${error.message}`, 'error');
                 
+                // إظهار تفاصيل الخطأ
+                document.getElementById('errorDetails').style.display = 'block';
+                
                 // إضافة زر إعادة المحاولة
                 const statusContainer = document.getElementById('statusContainer');
                 const retryBtn = document.createElement('button');
@@ -705,6 +791,7 @@
                 retryBtn.innerHTML = '<i class="fas fa-redo"></i> إعادة المحاولة';
                 retryBtn.onclick = () => {
                     hideStatus();
+                    document.getElementById('errorDetails').style.display = 'none';
                     videoForm.dispatchEvent(new Event('submit'));
                 };
                 statusContainer.appendChild(retryBtn);
